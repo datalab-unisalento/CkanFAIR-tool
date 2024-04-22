@@ -70,6 +70,12 @@ class GuidelinesA(Metric):
                     if status != 401:
                         self.info_test('url accessible', 3)
                         max_point_found = max(2, max_point_found)
+                    else:
+                        self.hint_test("Distribution URL not accessible")
+
+                else:
+                    self.hint_test("Distribution URL not working")
+
             except requests.RequestException as e:
                 raise TestError('GUIDELINES A', e)
             except Exception as e:
@@ -77,7 +83,7 @@ class GuidelinesA(Metric):
 
             self.scored_point += max_point_found
         else:
-            self.hint_test("file url doesn't seem to be implemented")
+            self.hint_test("L'url della distribuzione non sembra implementato")
 
         return self.end_test()
 

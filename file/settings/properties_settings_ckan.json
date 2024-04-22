@@ -1,4 +1,9 @@
 {
+ "methods": [
+  "DCAT_AP",
+  "DCAT_AP-IT",
+  "merged"
+ ],
 "result":[
  {
   "property": "notes",

@@ -15,6 +15,24 @@ def box(title, text, _icon='warning'):
         ans = 0
     return ans
 
+class UserInput(tk.Tk):
+    def __init__(self, *args, **kwargs):
+        tk.Tk.__init__(self, *args, **kwargs)
+
+        event_bus.event_bus.subscribe(self)
+        container = tk.Frame(self, background="white")
+        container.grid(row=0, column=0)
+
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+        self.logo = ImageTk.PhotoImage(Image.open(gui_el_path + "logo.png").resize((1000, 600)))
+
+        label = tk.Label(container)
+        label.grid(row=0, column=0)
+        label.config(background="white", image=self.logo, wraplength=400)
+
+
+
 
 class DatabaseUpdate(tk.Tk):
     def __init__(self, *args, **kwargs):

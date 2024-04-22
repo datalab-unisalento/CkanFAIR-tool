@@ -1,4 +1,5 @@
 import copy
+import csv
 import json
 
 import data_retriever
@@ -7,6 +8,26 @@ from assessment.metadata import support_f2, support_f4
 from assessment.test import *
 
 
+def apri():
+    # Definisci il nome del file CSV
+    csv_file = 'file/graphs/IPA_to_istat.csv'
+
+    # Definisci l'array in cui memorizzare i valori della colonna
+    colonna_array = []
+
+    # Apre il file CSV in modalità lettura
+    with open(csv_file, newline='') as file:
+        # Leggi il contenuto del file CSV
+        reader = csv.reader(file)
+
+        # Itera sulle righe del file CSV
+        for riga in reader:
+            # Aggiungi il valore della colonna alla lista
+            # Assicurati di sostituire 'indice_colonna' con l'indice della colonna desiderata
+            colonna_array.append(riga[1])
+
+    return colonna_array
+
 class F1(Metric):
     def __init__(self, payload):
         super().__init__( 'F1', 'finding dataset permanent URL')
@@ -14,6 +35,7 @@ class F1(Metric):
 
     def run_test(self):
         self.start_test()
+        ipas = apri()
 
         try:
             permalinks = file_manager.open_file('permanent_link', 'json', True, 'set')['formats']
@@ -38,15 +60,33 @@ class F1(Metric):
                                 break
 
             if self.scored_point == 0:
-                self.hint_test("No permalink found for the dataset. Add a permalink")
+                self.hint_test("The dataset doesn't seem to have a permalink.")
 
+            self.max_point += 1
+            if "identifier" in self.payload["result"] and self.payload["result"]["identifier"]:
+                if self.payload['result']["identifier"].find(':') != -1:
+                    cc = self.payload['result']["identifier"].split(':')
+                    if len(cc) == 2:
+                        ipa = cc[0]
+                        if ipa in ipas:
+                            self.scored_point += 1
+                        else:
+                            self.hint_test(f"IPA in identifier not known -> {ipa}")
+                    else:
+                        self.hint_test(f"L'identifier del dataset non rispetta il formato IPA:id -> {self.payload['result']['identifier']}")
+                else:
+                    self.hint_test(
+                        f"L'identifier del dataset non rispetta il formato IPA:id -> {self.payload['result']['identifier']}")
+            else:
+                self.hint_test(
+                    f"Dataset identifier not found")
             return self.end_test()
 
         except FileManagerError as e:
             raise TestError('F1', e)
 
 
-class F2(Metric):
+class F22(Metric):
     def __init__(self, payload, method, portal_url):
         super().__init__('F2', 'calculating metadata richness')
         self.payload = payload
@@ -55,41 +95,97 @@ class F2(Metric):
 
     def run_test(self):
         self.start_test()
-        # TODO:  implement RDF support
-        # try:
-        #     data_retriever.retrieve_dataset(self.portal_url + 'dataset/' + self.payload['result']['name'] + '.rdf')
-        #
-        #     g = file_manager.open_file(self.payload['result']['name'], 'rdf', k_path='temp')
-        #
-        #
-        #
-        #
-        # except data_retriever.DataRetrieverError:
-        #     pass
-        try:
-            prop_with_sub = support_f2.load_sup_link()
-            prop_points = support_f2.load_point("result", self.method)
-            schema_properties = support_f2.load_metadata_properties_schema(self.method)
-            self.max_point = support_f2.load_max_point("result", self.method)
-            metadata_properties = support_f2.normalizer(self.payload["result"])
+        with open("file/settings/properties.json", "r") as file:
+            properties = json.load(file)
 
-            for _property in schema_properties:
-                self.info_test(f"evaluating {str(_property)}", 1)
-                weight = 1
+        def calculate_max_score(_property):
+            score = 0
+            for prop in properties[_property]:
+                score += support_f2.calc_point(properties[_property][prop])
+            return score
 
-                if _property in metadata_properties and metadata_properties[_property] != {} \
-                        and metadata_properties[_property] is not None:
-                    if _property in prop_with_sub:
-                        self.info_test(f"{str(_property)} seems to have sub", 2)
-                        weight = support_f2.find_weight(self.payload, _property, self.method)
-                        self.info_test(f"{str(_property)} has weight: {weight}", 2)
-                    self.info_test(f"points {str(prop_points[_property])} weight: {str(weight)}", 1)
-                    self.scored_point += round(prop_points[_property] * weight, 2)
+        self.max_point += calculate_max_score("result") - 1
+        for _property in properties["result"].keys():
+            self.info_test(f"evaluating {str(_property)}", 1)
+            if _property == 'resources':
+                resources = self.payload['result'][_property]
+                max_score = calculate_max_score('resources')
+                score = 0
+                for resource in resources:
+                    for prop in properties[_property]:
+                        if prop in resource and resource[prop]:
+                            score += support_f2.calc_point(properties[_property][prop])
+                        else:
+                            self.hint_test(f"**Property:::** {prop}; **Resource:** {resource['name']}; **Warning:** "
+                                           f"not implemented."
+                                           f" -- **Obligatory level:**: {'MANDATORY' if properties[_property][prop] == 'M' else ('RECOMMENDED' if properties[_property][prop] == 'R' else 'OPTIONAL')}")
+                score = score / len(resources)
+                self.scored_point += (score / max_score)
+
+            elif _property == 'extras':
+                max_score = calculate_max_score('extras')
+                score = 0
+
+                for prop in properties[_property]:
+                    found = 0
+                    for elem in self.payload['result'][_property]:
+                        if elem['key'] == prop:
+                            found = 1
+                            if elem['value']:
+                                score += support_f2.calc_point(properties[_property][prop])
+                            else:
+                                self.hint_test(f"**Property:** {prop} **Attribute:** extras; **Warning:** la proprietà non sembra implementata"
+                                       f" -- **Obligatory level:** {'MANDATORY' if properties[_property][prop] == 'M' else ('RECOMMENDED' if properties[_property][prop] == 'R' else 'OPTIONAL')}")
+
+                    if not found:
+                        self.hint_test(
+                            f"**Property:** {prop} **Attribute:** extras; **Warning:** la proprietà non sembra implementata"
+                            f" -- **Obligatory level:** {'MANDATORY' if properties[_property][prop] == 'M' else ('RECOMMENDED' if properties[_property][prop] == 'R' else 'OPTIONAL')}")
+
+                self.scored_point += (score/max_score)
+
+            elif _property in self.payload['result'] and self.payload['result'][_property]:
+                if _property not in properties.keys():
+                    self.scored_point += support_f2.calc_point(properties["result"][_property])
                 else:
-                    self.hint_test(f"Property {str(_property)} doesn't seem to be implemented")
+                    sub_max_point = 0
+                    for sub_p in properties[_property].keys():
 
-        except file_manager.FileManagerError as e:
-            raise TestError('F2', e)
+                        sub_max_point += support_f2.calc_point(properties[_property][sub_p])
+                        sub_point = 0
+
+                        if sub_p in self.payload['result'][_property]:
+                            if isinstance(self.payload['result'][_property], str):
+                                sub_property = json.loads(self.payload['result'][_property])
+                            else:
+                                sub_property = self.payload['result'][_property]
+                            if sub_property:
+                                if sub_p not in properties.keys():
+                                    sub_point += support_f2.calc_point(properties[_property][sub_p])
+                                else:
+                                    ssub_max_point = 0
+                                    ssub_point = 0
+                                    for ssub_p in properties[sub_p].keys():
+                                        ssub_max_point += support_f2.calc_point(properties[sub_p][ssub_p])
+                                        if ssub_p in self.payload['result'][_property] and \
+                                                self.payload['result'][_property][sub_p]:
+                                            ssub_point += support_f2.calc_point(properties[sub_p][ssub_p])
+                                        else:
+                                            self.hint_test(f"**Property:** {_property} -> {sub_p} -> {ssub_p}  **Warning:** not implemented"
+                                                           f" -- **Obligatory level:** {'MANDATORY' if properties[_property][prop] == 'M' else ('RECOMMENDED' if properties[_property][prop] == 'R' else 'OPTIONAL')}")
+
+                                    sweight = ssub_point / ssub_max_point
+                                    sub_point += sweight * support_f2.calc_point(properties[_property][sub_p])
+                        else:
+                            self.hint_test(
+                                f"**Property:** {_property} -> {sub_p} **Warning:** not implemented"
+                                f" -- **Obligatory level:** {'MANDATORY' if properties[_property][prop] == 'M' else ('RECOMMENDED' if properties[_property][prop] == 'R' else 'OPTIONAL')}")
+
+                        weight = sub_point / sub_max_point
+                    self.scored_point += weight * support_f2.calc_point(properties["result"][_property])
+            else:
+                self.hint_test(f"**Property:** {_property}; **Warning:** not implemented"
+                               f" -- **Obligatory level:** {'MANDATORY' if properties['result'][_property] == 'M' else ('RECOMMENDED' if properties['result'][_property] == 'R' else 'OPTIONAL')}")
 
         return self.end_test()
 
@@ -103,8 +199,7 @@ class F3(Metric):
         self.start_test()
 
         if "resources" not in self.payload["result"] or len(self.payload["result"]["resources"]) == 0:
-            self.hint_test("distributions doesn't seem to be implemented, "
-                           "data info should be implemented in the metadata")
+            self.hint_test("No resource found")
             return self.end_test()
 
         self.max_point = len(self.payload["result"]["resources"])
@@ -116,8 +211,7 @@ class F3(Metric):
                 self.info_test(f"for distribution {str(idx +1)} found id: {str(distribution['id'])}", 2)
                 self.scored_point += 1
             else:
-                self.hint_test(f"distribution {str(idx + 1)} doesn't seem to have an ID. "
-                               f"ID should be implemented for all distributions")
+                self.hint_test(f"Distribution {self.payload['result']['resources'][idx]['name']} has no id")
         return self.end_test()
 
 
@@ -125,42 +219,22 @@ class F4(Metric):
     def __init__(self, payload, portal_url: str):
         super().__init__('F4', 'searching for metadata indexing')
         self.payload = payload
-        if portal_url.endswith('ckan'):
-            temp = portal_url.replace('ckan', '')
-        elif portal_url.endswith('ckan/'):
-            temp = portal_url.replace('ckan/', '')
-        else:
-            temp = portal_url
-
-        if not temp.endswith('/'):
-            self.portal_url = temp + '/'
-        else:
-            self.portal_url = temp
 
     def run_test(self):
         self.start_test()
+        try:
+            if support_f4.duckduckgo_indexed('https://dati.puglia.it/ckan/dataset/' + self.payload['result']['name']):
+                self.info_test(f"found {self.portal_url + self.payload['result']['name']}", 2)
+                self.scored_point += 1
+                return self.end_test()
 
-        known_structures = [self.portal_url, self.portal_url + 'dataset/', self.portal_url + 'ckan/', self.portal_url + 'ckan/dataset/']
 
-        for structure in known_structures:
-            try:
-                self.info_test(f"searching on DuckDuckGo", 1)
-                if support_f4.duckduckgo_indexed(structure + self.payload['result']['name']):
-                    self.info_test(f"found {self.portal_url + self.payload['result']['name']}", 2)
-                    self.scored_point += 1
-                    return self.end_test()
-
-                else:
-                    if support_f4.duckduckgo_indexed(structure + self.payload['result']['id']):
-                        self.info_test(f"found {self.portal_url + self.payload['result']['name']}", 2)
-                        self.scored_point += 1
-                        return self.end_test()
-
-                    else:
-                        self.hint_test('resource not indexed')
-
-            except support_f4.DuckDuckGoError as e:
+            else:
                 pass
+                # self.hint_test('La risorsa non è indicizzata nei motori di ricerca')
+
+        except support_f4.DuckDuckGoError as e:
+            pass
 
         return self.end_test()
 
@@ -183,22 +257,27 @@ class GuidelinesF(Metric):
         empty_fields += payload_text.count("{}")
         self.info_test(f"found {str(empty_fields)} empty fields: {str(round(empty_fields / fields * 100, 2))}%", 2)
         self.scored_point += (fields - empty_fields) / fields
+        if empty_fields:
+            self.hint_test(f"Found {empty_fields} empty fields for {fields} fields in metadata")
 
         self.info_test("evaluating important field presence in the metadata", 1)
         if 'tags' in self.payload.keys() and self.payload['result']['tags']:
             self.scored_point += 1
             self.info_test("keywords(tags) field found", 2)
         else:
-            self.hint_test("keywords(tags) field not found")
+            self.hint_test("Keywords not found")
         # TODO: find categories equivalent in CKAN response
-        if 'categories' in self.payload.keys() and self.payload['result']['categories']:
+
+        if 'groups' in self.payload['result'] and self.payload['result']['groups']:
             self.scored_point += 1
             self.info_test("categories field found", 2)
         else:
-            self.hint_test("categories field not found")
-        not_found = 1
-        if 'extras' in self.payload.keys():
-            for extra in self.payload['extras']:
+            self.hint_test("Themes not found")
+
+        if 'extras' in self.payload['result']:
+            print(self.payload['result']['extras'])
+            not_found = 1
+            for extra in self.payload['result']['extras']:
                 if not_found:
                     if extra['key'] == 'temporal_end' or extra['key'] == 'temporal_start':
                         if extra['value']:
@@ -207,10 +286,16 @@ class GuidelinesF(Metric):
                             not_found = 0
                             break
                         else:
-                            self.hint_test("temporal field not filled")
+                            self.hint_test("Temporal not found")
             if not_found:
-                self.hint_test("temporal field not found")
-            for extra in self.payload['extras']:
+                if 'temporal_coverage' in self.payload['result'] and self.payload['result']['temporal_coverage']:
+                    self.scored_point += 1
+                    self.hint_test("Temporal not found")
+                else:
+                    self.hint_test("Spatial not found")
+
+            not_found = 1
+            for extra in self.payload['result']['extras']:
                 if not_found:
                     if extra['key'] == 'spatial_uri':
                         if extra['value']:
@@ -219,13 +304,13 @@ class GuidelinesF(Metric):
                             not_found = 0
                             break
                         else:
-                            self.hint_test("temporal field not field")
+                            self.hint_test("Spatial not found")
             if not_found:
-                self.hint_test("spatial field not found")
+                self.hint_test("Spatial not found")
 
         else:
-            self.hint_test("spatial field not found")
-            self.hint_test("temporal field not found")
+            self.hint_test("Spatial not found")
+            self.hint_test("Temporal not found")
 
         return self.end_test()
 
@@ -235,7 +320,7 @@ class FindabilityTest(Principle):
         self.payload = payload
         self.method = method
         self.portal_url = portal_url
-        metric_test = [F1(self.payload), F2(self.payload, self.method, self.portal_url), F3(self.payload), F4(self.payload, self.portal_url), GuidelinesF(self.payload)]
+        metric_test = [F1(self.payload), F22(self.payload, self.method, self.portal_url), F3(self.payload), F4(self.payload, self.portal_url), GuidelinesF(self.payload)]
         super().__init__('F', metric_test)
 
 

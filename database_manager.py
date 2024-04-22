@@ -305,7 +305,18 @@ class DatabaseManager:
                         INNER JOIN Assessment ON Dataset.idDataset = Assessment.idDataset
                         WHERE Dataset.accPeriodicity < DATEDIFF(CURDATE(), Assessment.datetime)
                         AND Dataset.portalDataset = %s"""
-            cursor.execute(query, (self.portal_id,))
+            query2 = """SELECT Dataset.idDataset, Assessment.datetime
+                        FROM Dataset
+                        INNER JOIN (
+                            SELECT idDataset, MAX(datetime) AS last_assessment
+                            FROM Assessment
+                            GROUP BY idDataset) last_assessments
+                        ON Dataset.idDataset = last_assessments.idDataset
+                        INNER JOIN Assessment
+                        ON Dataset.idDataset = Assessment.idDataset AND Assessment.datetime = last_assessments.last_assessment
+                        WHERE Dataset.accPeriodicity < DATEDIFF(CURDATE(), Assessment.datetime)
+                        AND Dataset.portalDataset = %s;"""
+            cursor.execute(query2, (self.portal_id,))
             results = cursor.fetchall()
 
         dataset_list = []

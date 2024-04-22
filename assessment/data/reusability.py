@@ -14,33 +14,36 @@ class R11(Metric):
 
     def run_test(self):
         self.start_test()
-        vocabularies = file_manager.open_file('vocabularies', 'json', True, 'set')
+        vocabularies = file_manager.open_file('vocabularies_ckan', 'json', True, 'set')
 
         self.max_point = 2
         found = 0
+        found_voc = 0
         if "license" in self.resource_payload and self.resource_payload["license"] is not None:
+            found = 1
             self.info_test(f"for distribution found license", 2)
             self.scored_point += 1
-            for license_format in vocabularies["license"]["vocabulary_format"]:
+            for license_format in vocabularies["license_type"]["vocabulary_format"]:
                 if str(self.resource_payload['license']).find(license_format) != -1:
                     self.scored_point += 1
                     self.info_test("license respect vocabulary", 3)
-                    found = 1
-            if not found:
-                self.hint_test(f"license for distribution doesn't respect vocabulary")
+                    found_voc = 1
+
 
         elif "license_type" in self.resource_payload and self.resource_payload["license_type"] is not None:
+            found = 1
             self.info_test(f"for distribution found license", 2)
             self.scored_point += 1
-            for license_format in vocabularies["license"]["vocabulary_format"]:
+            for license_format in vocabularies["license_type"]["vocabulary_format"]:
                 if str(self.resource_payload['license_type']).find(license_format) != -1:
                     self.scored_point += 1
                     self.info_test("license respect vocabulary", 3)
-                    found = 1
-            if not found:
-                self.hint_test(f"license for distribution doesn't respect vocabulary")
-        else:
-            self.hint_test(f"license not found")
+                    found_voc = 1
+
+        if found and not found_voc:
+            self.hint_test(f"License does not use a known vocabulary")
+        if not found:
+            self.hint_test(f"License for resource does not seem to be implemented")
 
         return self.end_test()
 
@@ -78,11 +81,12 @@ class R13(Metric):
 
             try:
                 self.scored_point = retrieve_mqa_point(self.europa_id, self.resource_payload['name'])
+                if self.scored_point == 0:
+                    self.hint_test('Resource not found on (data.europa.eu)')
+                elif self.scored_point < self.max_point:
+                    self.hint_test(
+                        f'Resource score not max on european portal -> {self.scored_point} / {self.max_point}')
 
-                if self.scored_point < self.max_point:
-                    self.hint_test('resource score is not max on community guidelines')
-
-                self.hint_test('dataset might not be presente in community portal (data.europa.eu)')
             except requests.RequestException as e:
                 raise TestError('R1.3', e)
 
@@ -106,25 +110,24 @@ class GuidelinesR(Metric):
             self.info_test('size found', 2)
             self.scored_point += 1
         else:
-            self.hint_test('size not implemented')
+            self.hint_test('Size field not implemented')
 
         if self.file_name:
-            match self.file_name.split('.')[-1]:
-                case 'xml':
-                    self.max_point += 1
-                    if sp_xml.has_declaration(self.file_name):
-                        self.scored_point += 1
-                        self.info_test("file has xml declaration", 1)
-                    else:
-                        self.hint_test("file doesn't seem to have an xml declaration")
+            if self.file_name.split('.')[-1].lower() == 'xml':
+                self.max_point += 1
+                if sp_xml.has_declaration(self.file_name):
+                    self.scored_point += 1
+                    self.info_test("file has xml declaration", 1)
+                else:
+                    self.hint_test("File has not an xml declaration")
 
-                    self.max_point += 1
-                    if sp_xml.check_escape_use(self.file_name):
-                        self.scored_point += 1
-                        self.info_test("file seems to use correct escape", 1)
-                    else:
-                        self.hint_test("file doesn't seem to use correct escape characters")
-                    # TODO: how to verify camelCase or PascalCase
+                self.max_point += 1
+                if sp_xml.check_escape_use(self.file_name):
+                    self.scored_point += 1
+                    self.info_test("file seems to use correct escape", 1)
+                else:
+                    self.hint_test("File use incorrect escape characters")
+                # TODO: how to verify camelCase or PascalCase
 
         return self.end_test()
 

@@ -5,13 +5,12 @@ from file_manager import file_manager, FileManagerError
 
 
 def calc_point(value):
-    match value:
-        case 'M':
-            return 1
-        case 'R':
-            return 0.5
-        case 'O':
-            return 0.2
+    if value == 'M':
+        return 1
+    elif value == 'R':
+        return 0.5
+    elif value == 'O':
+        return 0.2
 
 
 def load_point(sup, method="merged"):
@@ -74,6 +73,7 @@ def load_sup_link():
 
     except FileManagerError:
         raise
+
 
 
 def load_metadata_properties_schema(method="merged", m_property="result"):

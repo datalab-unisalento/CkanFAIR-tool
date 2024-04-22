@@ -10,11 +10,21 @@ class TestError(Exception):
     test - the test running while the error was raised
     error - error captured
     """
+
     def __init__(self, test: str, error: Exception):
         self.test = test
         self.error = str(error)
         c_print.myprint(f"ERROR DURING TEST {self.test} -> {self.error}", Color.RED, 2)
         super().__init__("ERROR DURING TEST -> " + self.test + " -> " + self.error)
+
+
+class Test(ABC):
+    def __init__(self, name: str, goal: str, weight: float = 1):
+        self.name = name
+        self.goal = goal
+        self.weight = weight
+        self.max_score = 1
+        self.score = 0
 
 
 class Metric(ABC):
@@ -25,23 +35,28 @@ class Metric(ABC):
         self.goal = goal
         self.max_point = 1
         self.scored_point = 0
-
+        self.reports = []
 
     def start_test(self) -> None:
         self.max_point = 1
         self.scored_point = 0
-        """Print the starting test info(ex. F1 -> GOAL OF METRIC F1"""
+        """Print the starting test info(ex. F1 -> GOAL OF METRIC F1)"""
         c_print.myprint(f"{self.name}->{self.goal}", Color.CYAN, 0)
 
     def end_test(self) -> float:
         """Print the ending test info(ex. F1 -> max point: 1 | point scored: 0"""
-        c_print.myprint(f"{self.name} -> max point = {self.max_point} | point scored = {self.scored_point}", Color.UNDERLINE, 0)
-        return self.scored_point/self.max_point * 100
+        c_print.myprint(f"{self.name} -> max point = {self.max_point} | point scored = {self.scored_point}",
+                        Color.UNDERLINE, 0)
+        return self.scored_point / self.max_point * 100
 
     def hint_test(self, hint: str) -> None:
         """To use if (meta)data lack something a test is searching for.
         It prints a line to inform the user of what s lacking and send a copy to the reporter if a report is needed"""
         c_print.myprint(f"{self.name}-> {hint}", Color.BLUE, 3)
+        self.reports.append(hint)
+
+    def get_reports(self) -> list:
+        return self.reports
 
     @staticmethod
     def info_test(info: str, grade: int) -> None:
@@ -58,17 +73,18 @@ class Metric(ABC):
         the assessment function for the metrics"""
 
 
-
 class Principle(ABC):
     def __init__(self, name, metric_tests: list[Metric]):
         self.name = name
         self.metric_tests = metric_tests
+        self.reports = {}
 
     def run(self) -> dict[str: tuple[float, float]]:
         results = {}
         for test in self.metric_tests:
             try:
                 results[test.name] = test.run_test()
+                self.reports[test.name] = test.get_reports()
             except TestError:
                 results[test.name] = None
             except Exception as e:
@@ -77,16 +93,20 @@ class Principle(ABC):
 
         return results
 
+    def get_reports(self) -> dict:
+        return self.reports
+
 
 class Structure(ABC):
-    def __init__(self, name, principles:  list[Principle]):
+    def __init__(self, name, principles: list[Principle], reporter=None):
         self.name = name
         self.principles = principles
+        self.reporter = reporter
 
     def run(self):
         results = {}
         for principle in self.principles:
             results[principle.name] = principle.run()
-            principle.run()
+            self.reporter.reports[principle.name] = principle.get_reports()
 
         return results

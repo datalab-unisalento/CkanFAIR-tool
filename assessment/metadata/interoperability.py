@@ -26,26 +26,33 @@ class I2(Metric):
 
     def run_test(self):
         self.start_test()
-        vocabularies = file_manager.open_file('vocabularies', 'json', True, 'set')
+        vocabularies = file_manager.open_file('vocabularies_ckan', 'json', True, 'set')
 
         self.max_point -= 1
         import re
         for payload_property in vocabularies:
             pattern = re.compile(fr'"{payload_property}"\s?:\s?"(\S+)"')
             matches = re.findall(pattern, json.dumps(self.payload))
-            if matches:
-                print(payload_property, matches)
-                for match in matches:
-                    self.max_point += 1
-                    for vocabulary in vocabularies[payload_property]['vocabulary_format']:
-                        if vocabulary in match:
-                            self.scored_point += 1
-                            break
 
             pattern2 = re.compile(fr'"{payload_property}"\s?:\s?(\[.+])')
             matches2 = re.findall(pattern2, json.dumps(self.payload))
+
+            pattern3 = re.compile(fr'"key"\s?:\s?"{payload_property}"\s?,\s?"value"\s?:\s?"\s?(\S+)\s?"\s?}}')
+            matches3 = re.findall(pattern3, json.dumps(self.payload))
+
             found = 0
-            if matches2:
+            print(payload_property, matches, matches2, matches3)
+            if matches:
+                for match in matches:
+                    self.max_point += 1
+
+                    for vocabulary in vocabularies[payload_property]['vocabulary_format']:
+                        if vocabulary in match:
+                            self.scored_point += 1
+                            found = 1
+                            break
+
+            if matches2 and not found:
                 for match in matches2:
                     self.max_point += 1
                     match = json.loads(match)
@@ -58,18 +65,18 @@ class I2(Metric):
                         if found:
                             break
 
-            pattern3 = re.compile(fr'"key"\s?:\s?"{payload_property}"\s?,\s?"value"\s?:\s?"\s?(\S+)\s?"\s?}}')
-            matches3 = re.findall(pattern3, json.dumps(self.payload))
-
-            if matches3:
+            if matches3 and not found:
                 for match in matches3:
-                    print(payload_property, matches3)
-
                     self.max_point += 1
                     for vocabulary in vocabularies[payload_property]['vocabulary_format']:
                         if vocabulary in match:
                             self.scored_point += 1
+                            found = 1
                             break
+
+            if (matches or matches2 or matches3) and not found:
+                self.hint_test(f"Property {payload_property} does not use known vocabularies "
+                               f"-> FOUND: {matches + matches2 + matches3}")
 
         self.max_point = max(1, self.max_point)
         return self.end_test()
@@ -84,11 +91,7 @@ class I3(Metric):
     def run_test(self):
         self.start_test()
         text_payload = json.dumps(self.payload)
-        print(self.url)
-
         domain_url = urllib.parse.urlparse(self.url).netloc
-        print(urllib.parse.urlparse(self.url))
-
         url_found = re.findall(r'(https?://\S+)', text_payload)
         unique_url = []
         if url_found:
@@ -97,8 +100,6 @@ class I3(Metric):
             self.max_point = len(url_found)
             self.info_test(f'found {str(len(url_found))} url', 1)
             unique_url = set(unique_url)
-            print(unique_url)
-            print(domain_url)
 
             for url in unique_url:
                 if url.find(domain_url) == -1:
@@ -107,11 +108,9 @@ class I3(Metric):
 
             ext_url = self.max_point - self.scored_point
             if ext_url < self.max_point:
-                self.hint_test(f"only {self.scored_point} of {self.max_point} are outside of domain. "
-                               f"Its good practice to do it as much as possible. (MIGHT NOT BE POSSIBLE)")
+                self.hint_test(f"Only {self.scored_point} of {self.max_point} links outside of domain")
             if not ext_url:
-                self.hint_test('No url found in metadata pointing outside of domain. '
-                               'Its good practice to build linked data')
+                self.hint_test('No links outside of domain have been found')
 
         return self.end_test()
 

@@ -1,8 +1,10 @@
+import csv
 import json
 
 from file_manager import file_manager
 from assessment.metadata import support_f2, support_f4
 from assessment.test import *
+
 
 
 class F1(Metric):
@@ -23,9 +25,9 @@ class F1(Metric):
                         self.info_test(f'permalink found: {permalink}', 1)
                         self.scored_point = 1
                         break
-            if self.scored_point == 0:
-                self.hint_test("No permalink found for resource. Add a permalink")
 
+            if self.scored_point == 0:
+                self.hint_test("Resource has not a permanent link")
             return self.end_test()
 
         except file_manager.LoaderFileError as e:
@@ -68,6 +70,41 @@ class F2(Metric):
 
         return self.end_test()
 
+class F22(Metric):
+    def __init__(self, resource_payload: dict, method: str):
+        super().__init__('F2', 'calculating metadata richness for data resource')
+        self.resource_payload = resource_payload
+        self.method = method
+
+    def run_test(self):
+        self.start_test()
+        with open("file/settings/properties.json", "r") as file:
+            properties = json.load(file)
+
+        def calculate_max_score(_property):
+            score = 0
+            for prop in properties[_property]:
+                score += support_f2.calc_point(properties[_property][prop])
+            return score
+
+        self.max_point += calculate_max_score("resources") - 1
+
+        score = 0
+
+        for prop in properties['resources']:
+            if prop in self.resource_payload and self.resource_payload[prop]:
+                score += support_f2.calc_point(properties['resources'][prop])
+            else:
+                self.hint_test(f"**Property:** {prop}; **Resource:** {self.resource_payload['name']}; "
+                               f"**Warning:** property does not seem to be implmented"
+                               f"**Obligatory level:** "
+                               f"{'MANDATORY' if properties['resources'][prop] == 'M' else ('RECOMMENDED' if properties['resources'][prop] == 'R' else 'OPTIONAL')}")
+
+        self.scored_point += score
+
+        return  self.end_test()
+
+
 
 class F3(Metric):
     def __init__(self, resource_payload: dict):
@@ -78,15 +115,12 @@ class F3(Metric):
         self.start_test()
 
         if "id" not in self.resource_payload:
-            self.hint_test("distributions doesn't seem to be implemented, "
-                           "data info should be implemented in the metadata")
+            self.hint_test("Distribution does not seem to have an id")
             return self.end_test()
         if self.resource_payload['id']:
             self.info_test(f"for distribution found id: {str(self.resource_payload['id'])}", 2)
             self.scored_point += 1
-        else:
-            self.hint_test(f"distribution doesn't seem to have an ID. "
-                           f"ID should be implemented for all distributions")
+
         return self.end_test()
 
 
@@ -133,6 +167,8 @@ class GuidelinesF(Metric):
         empty_fields += payload_text.count("{}")
         self.info_test(f"found {str(empty_fields)} empty fields: {str(round(empty_fields / fields * 100, 2))}%", 2)
         self.scored_point += (fields - empty_fields) / fields
+        if empty_fields:
+            self.hint_test(f"Found {empty_fields} empty fields for {fields} fields in resource metadata")
 
         return self.end_test()
 
@@ -141,6 +177,6 @@ class FindabilityTest(Principle):
     def __init__(self, resource_payload: dict, method: str = 'DCAT_AP-IT'):
         self.resource_payload = resource_payload
         self.method = method
-        metric_test = [F1(self.resource_payload), F2(self.resource_payload, self.method), F3(self.resource_payload),
+        metric_test = [F1(self.resource_payload), F22(self.resource_payload, self.method), F3(self.resource_payload),
                        F4(self.resource_payload), GuidelinesF(self.resource_payload)]
         super().__init__('F', metric_test)

@@ -11,7 +11,7 @@ class R11(Metric):
 
     def run_test(self):
         self.start_test()
-        vocabularies = file_manager.open_file('vocabularies', 'json', True, 'set')
+        vocabularies = file_manager.open_file('vocabularies_ckan', 'json', True, 'set')
 
         self.max_point = 2
         if "license_url" in self.payload['result'] and self.payload['result']["license_url"] is not None:
@@ -22,7 +22,7 @@ class R11(Metric):
                     self.scored_point += 1
                     self.info_test("license respect vocabulary", 3)
                 else:
-                    self.hint_test(f"license for distribution doesn't respect vocabulary")
+                    self.info_test(f"License does not use known voabularies -> {self.payload['result']['license_url']}", 3)
 
         elif "license_id" in self.payload['result'] and self.payload['result']["license_id"] is not None:
             self.info_test(f"license found", 2)
@@ -31,10 +31,24 @@ class R11(Metric):
                 if str(self.payload['result']['license_id']).find(license_format) != -1:
                     self.scored_point += 1
                     self.info_test("license respect vocabulary", 3)
+                    self.hint_test("License URL should be in license_utl not license_id")
                 else:
-                    self.hint_test(f"license for distribution doesn't respect vocabulary")
+                    self.info_test(f"License does not use known voabularies -> {self.payload['result']['license_id']}", 3)
+
+        elif "license_title" in self.payload['result'] and self.payload['result']["license_title"] is not None:
+            self.info_test(f"license found", 2)
+            self.scored_point += 1
+            for license_format in vocabularies["license_type"]["vocabulary_format"]:
+                if str(self.payload['result']['license_title']).find(license_format) != -1:
+                    self.scored_point += 1
+                    self.info_test("license respect vocabulary", 3)
+                    self.hint_test("License URL should be in license_utl not license_title")
+                else:
+                    self.info_test(f"License does not use known voabularies -> {self.payload['result']['license_title']}", 3)
+
         else:
-            self.hint_test(f"license not found")
+            self.info_test(
+                f"No license found", 3)
 
         return self.end_test()
 
@@ -47,6 +61,7 @@ class R12(Metric):
     def run_test(self):
         self.start_test()
         found = 0
+
         if 'extras' in self.payload['result']:
             for extra in self.payload['result']['extras']:
                 if extra['key'] == 'provenance' and extra['value']:
@@ -60,12 +75,18 @@ class R12(Metric):
                     # TODO: find creator equivalent in CKAN response
                     if (extra['key'] == 'publisher_uri' and extra['value']) or (extra['key'] == 'creator'
                                                                                 and extra['value']):
-                        self.hint_test('provenance not found, but found publisher/creator')
+                        self.hint_test('No provenance found but found publisher_uri')
                         found = 1
                         self.scored_point += 0.5
                         break
+            if not found:
+                if ('publisher_uri' in self.payload['result'] and self.payload['result']['publisher_uri']) or (
+                        'publisher_name' in self.payload['result'] and self.payload['result']['publisher_name']):
+                    self.hint_test('No provenance found but found publisher')
+                    found = 1
+                    self.scored_point += 0.5
         if not found:
-            self.hint_test('provenance not found')
+            self.hint_test('No provenance found')
 
         return self.end_test()
 
@@ -90,9 +111,9 @@ class R13(Metric):
             self.scored_point = retrieve_mqa_point(self.europa_id)
 
             if self.scored_point < self.max_point:
-                self.hint_test('dataset score is not max on community guidelines')
+                self.hint_test(f'Dataset score on european portal is not max -> {self.scored_point} / {self.max_point}')
 
-        self.hint_test('dataset might not be presente in community portal (data.europa.eu)')
+        else: self.hint_test('Dataset no on european portal (data.europa.eu)')
         return self.end_test()
 
 
@@ -113,7 +134,7 @@ class GuidelinesR(Metric):
                 self.info_test('size found', 2)
                 self.scored_point += 1
             else:
-                self.hint_test('size not implemented')
+                self.hint_test(f"Size field not implemented for distribution -> {distribution['name'] + (distribution['format'] if 'format' in distribution and distribution['format'] else distribution['id'])}")
 
         return self.end_test()
 

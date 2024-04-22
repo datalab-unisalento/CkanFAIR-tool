@@ -14,3 +14,5 @@ def duckduckgo_indexed(link):
 class DuckDuckGoError(Exception):
     pass
 
+
+

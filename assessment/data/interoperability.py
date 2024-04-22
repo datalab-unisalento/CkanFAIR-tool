@@ -19,13 +19,28 @@ class I1(Metric):
         self.scored_point += 1
         # CATALOG USES CKAN API THAT GIVES BACK A JSON RESPONSE a formal, accessible, shared, and broadly
         # applicable language for knowledge representation.
-
         formats = file_manager.open_file('format', 'json', True, 'set')
         self.max_point += 1
-        if ('distribution_format' in self.resource_payload
+        if ('distribution_format' in self.resource_payload and self.resource_payload['distribution_format']
                 and self.resource_payload['distribution_format'].lower() in formats):
             self.scored_point += formats[self.resource_payload['distribution_format'].lower()]['point'] / formats['max_point']
+            if formats[self.resource_payload['distribution_format'].lower()]['point'] < formats['max_point']:
+                self.hint_test(f"File format has a  {formats[self.resource_payload['distribution_format'].lower()]['point']}/" 
+                            f"{formats['max_point']} score -> machine readable: {formats[self.resource_payload['distribution_format'].lower()]['machine-readable']}"
+                            f" | non proprietary: {formats[self.resource_payload['distribution_format'].lower()]['non-proprietary']}")
 
+        elif ('format' in self.resource_payload and self.resource_payload['format']
+                    and self.resource_payload['format'].lower() in formats):
+                self.scored_point += formats[self.resource_payload['format'].lower()]['point'] / formats['max_point']
+                if formats[self.resource_payload['format'].lower()]['point'] < formats['max_point']:
+                    self.hint_test(
+                        f"File format has a  {formats[self.resource_payload['distribution_format'].lower()]['point']}/"
+                        f"{formats['max_point']} score -> machine readable: {formats[self.resource_payload['distribution_format'].lower()]['machine-readable']}"
+                        f" | non proprietary: {formats[self.resource_payload['distribution_format'].lower()]['non-proprietary']}")
+        elif ('distribution_format' in self.resource_payload and self.resource_payload['distribution_format']) or ('format' in self.resource_payload and self.resource_payload['format']):
+            self.hint_test("Format not supported")
+        else:
+            self.hint_test("Format is not declared")
         return self.end_test()
 
 
@@ -36,26 +51,31 @@ class I2(Metric):
 
     def run_test(self):
         self.start_test()
-        vocabularies = file_manager.open_file('vocabularies', 'json', True, 'set')
+        vocabularies = file_manager.open_file('vocabularies_ckan', 'json', True, 'set')
 
         self.max_point -= 1
         import re
         for payload_property in vocabularies:
             pattern = re.compile(fr'"{payload_property}"\s?:\s?"(\S+)"')
             matches = re.findall(pattern, json.dumps(self.resource_payload))
+
+            pattern2 = re.compile(fr'"{payload_property}"\s?:\s?(\[.+])')
+            matches2 = re.findall(pattern2, json.dumps(self.resource_payload))
+
+            pattern3 = re.compile(fr'"key"\s?:\s?"{payload_property}"\s?,\s?"value"\s?:\s?"\s?(\S+)\s?"\s?}}')
+            matches3 = re.findall(pattern3, json.dumps(self.resource_payload))
+
+            found = 0
             if matches:
-                print(payload_property, matches)
                 for match in matches:
                     self.max_point += 1
                     for vocabulary in vocabularies[payload_property]['vocabulary_format']:
                         if vocabulary in match:
                             self.scored_point += 1
+                            found = 1
                             break
 
-            pattern2 = re.compile(fr'"{payload_property}"\s?:\s?(\[.+])')
-            matches2 = re.findall(pattern2, json.dumps(self.resource_payload))
-            found = 0
-            if matches2:
+            if matches2 and not found:
                 for match in matches2:
                     self.max_point += 1
                     match = json.loads(match)
@@ -68,18 +88,17 @@ class I2(Metric):
                         if found:
                             break
 
-            pattern3 = re.compile(fr'"key"\s?:\s?"{payload_property}"\s?,\s?"value"\s?:\s?"\s?(\S+)\s?"\s?}}')
-            matches3 = re.findall(pattern3, json.dumps(self.resource_payload))
-
-            if matches3:
+            if matches3 and not found:
                 for match in matches3:
-                    print(payload_property, matches3)
-
                     self.max_point += 1
                     for vocabulary in vocabularies[payload_property]['vocabulary_format']:
                         if vocabulary in match:
                             self.scored_point += 1
+                            found = 1
                             break
+            if (matches or matches2 or matches3) and not found:
+                self.hint_test(f"Property {payload_property} does not seem to use known vocabularies"
+                               f"-> FOUND: {matches + matches2 + matches3}")
 
         self.max_point = max(1, self.max_point)
         return self.end_test()
@@ -118,7 +137,7 @@ class GuidelinesI(Metric):
 
                 self.scored_point += 1
             except UnicodeDecodeError:
-                self.hint_test("file it's not utf-8 encoded")
+                self.hint_test("File is not utf-8 encoded")
                 with open(fm.generic_file_path + fm.temp_file_path + self.file_name, "r") as f:
                     file_content = f.read()
             except FileNotFoundError as e:
@@ -129,60 +148,62 @@ class GuidelinesI(Metric):
             if file_content:
                 self.info_test("file utf-8 encoded", 1)
                 perc_corr_date_format = assessment.probability_test.date_time_format(file_content)
+
                 if perc_corr_date_format[0] > 0:
                     self.max_point += 1
                     self.scored_point += perc_corr_date_format[1] / perc_corr_date_format[0]
 
-                match self.file_name.split('.')[-1]:
-                    case 'csv':
-                        self.max_point += 1
-                        if sp_csv.get_delimiter(self.file_name):
-                            self.info_test("csv file delimiter is ; correct", 1)
-                            self.scored_point += 1
-                        else:
-                            self.hint_test("csv file should have ; as delimiter")
-                        self.max_point += 1
-                        if sp_csv.is_single_table_csv(self.file_name):
-                            self.info_test("file seems to hold just one table", 1)
-                            self.scored_point += 1
+                if self.file_name.split('.')[-1] == 'csv':
+                    self.max_point += 1
+                    if sp_csv.check_delimiter(self.file_name):
+                        self.info_test("csv file delimiter is ; correct", 1)
+                        self.scored_point += 1
+                    else:
+                        self.hint_test("CSV file should use ; as delimiter")
+                    self.max_point += 1
+                    if sp_csv.is_single_table_csv(self.file_name):
+                        self.info_test("file seems to hold just one table", 1)
+                        self.scored_point += 1
 
-                        else:
-                            self.hint_test("file seems to hold more table in one page, this behavior is not recommended")
-                        self.max_point += 1
-                        if sp_csv.is_blank_free(self.file_name):
-                            self.info_test("file seems to not have blank rows", 1)
-                            self.scored_point += 1
+                    else:
+                        self.hint_test("File holds more than one table, not recommended")
+                    self.max_point += 1
 
-                        else:
-                            self.hint_test("file seems to have blank rows inside")
-                        # TODO: function to verify there isn't a title
-                        self.max_point += 1
+                    if sp_csv.is_blank_free(self.file_name):
+                        self.info_test("file seems to not have blank rows", 1)
+                        self.scored_point += 1
 
-                        if sp_csv.has_header(self.file_name):
-                            self.info_test("file has header", 1)
-                            self.scored_point += 1
+                    else:
+                        self.hint_test("File has blank rows, not recommended")
+                    # TODO: function to verify there isn't a title
+                    self.max_point += 1
 
-                        else:
-                            self.hint_test("file doesn't seem to have header")
-                    case 'xml':
-                        self.max_point += 1
-                        if sp_xml.check_no_program_info(self.file_name):
-                            self.info_test("file does not contain information on creator software", 1)
-                            self.scored_point += 1
+                    if sp_csv.has_header(self.file_name):
+                        self.info_test("file has header", 1)
+                        self.scored_point += 1
 
-                        else:
-                            self.hint_test("file does not contain information on creator software")
-                    case 'rdf':
+                    else:
+                        self.hint_test("File does not have header, not recommended")
+                elif self.file_name.split('.')[-1] == 'xml':
+                    self.max_point += 1
+                    if sp_xml.check_no_program_info(self.file_name):
+                        self.info_test("file does not contain information on creator software", 1)
+                        self.scored_point += 1
+
+                    else:
+                        self.hint_test("File contains information on creator software, not recommended")
+
+                elif self.file_name.split('.')[-1] == 'rdf':
                         # TODO:  Use HTTP URIs to denote resource
                         pass
-                    case 'json':
-                        self.max_point += 1
-                        if sp_json.validate_var_type(self.file_name):
-                            self.info_test("file use correct data type", 1)
-                            self.scored_point += 1
+                elif self.file_name.split('.')[-1] == 'json':
+                    self.max_point += 1
+                    if sp_json.validate_var_type(self.file_name):
+                        self.info_test("file use correct data type", 1)
+                        self.scored_point += 1
 
-                        else:
-                            self.hint_test("file use incorrect data type")
+                    else:
+                        self.hint_test("File use incorrects data type")
         return self.end_test()
 
 

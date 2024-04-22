@@ -6,4 +6,8 @@
 /file/temp/enti.ods
 /file/temp/prova.json
 /file/temp/prova.xml
-/.idea
+/.idea!/file/settings/metadata_schema.json
+!/old/
+!/logs/report.txt
+
+!/logs/report2.txt

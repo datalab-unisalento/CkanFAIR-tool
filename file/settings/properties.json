@@ -1,0 +1,46 @@
+{
+    "result": {
+        "identifier": "M",
+        "title": "M",
+        "notes": "M",
+        "modified": "M",
+        "extras": "M",
+        "holder_name": "M",
+        "holder_identifier": "M",
+        "frequency": "M",
+        "resources": "M",
+        "themes_aggregate": "O",
+        "publisher_name": "R",
+        "publisher_identifier": "R",
+        "author": "O",
+        "author_identifier": "O",
+        "version": "O",
+        "issued": "O",
+        "url": "O",
+        "language": "O",
+        "tags": "O",
+        "is_version_of": "O"
+    },
+    "extras": {
+        "theme": "M",
+        "contact_name": "M",
+        "contact_email": "M",
+        "contact_telephone": "O",
+        "contact_uri": "O"
+    },
+    "themes_aggregate": {
+        "subthemes": "M"
+    },
+    "resources": {
+        "format": "M",
+        "access_url": "M",
+        "license_type": "M",
+        "license": "O",
+        "description": "R",
+        "name": "O",
+        "url": "O",
+        "last_modified": "O",
+        "size": "O"
+    },
+    "55": "M"
+}

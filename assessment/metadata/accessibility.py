@@ -57,8 +57,7 @@ class GuidelinesA(Metric):
     def run_test(self):
         self.start_test()
         if "resources" not in self.payload["result"] or self.payload["result"]["resources"] == [1]:
-            self.hint_test("distributions doesn't seem to be implemented, data info should be implemented "
-                           "in the metadata")
+            self.hint_test("Dataset does not contain resources")
             return self.end_test()
 
         self.max_point = len(self.payload["result"]["resources"]) * 3
@@ -89,16 +88,16 @@ class GuidelinesA(Metric):
                                 self.scored_point += 1
                                 break
                             else:
-                                self.hint_test("distribution {distribution['id']} -> url found but not accessible")
+                                self.hint_test(f"Resource {distribution['name']} has url but is not accessible")
                         else:
-                            self.hint_test("distribution {distribution['id']} -> url not working")
+                            self.hint_test(f"Resource {distribution['name']} has url but it's not working")
 
                     except requests.RequestException as e:
                         raise TestError('GUIDELINES A', e)
                     except Exception as e:
                         raise TestError('GUIDELINES A', e)
             else:
-                self.hint_test("distribution {distribution['id']} -> url not found")
+                self.hint_test(f"For distribution {distribution['id']} -> url not found")
         return self.end_test()
 
 
