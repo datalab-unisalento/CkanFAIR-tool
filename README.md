@@ -32,6 +32,26 @@ This will launch the tool and execute predefined actions without requiring addit
 
 The tool does not require arguments for execution but offers configurable options within the source code.
 
+## Configuring the Environment Variables
+To configure the environment variables necessary for the tool to function properly, create a file named .env in the root directory of the project. In this file, specify the following parameters:
+
+`TOOL_VERSION=alpha_v0.1
+DATABASE_ENDPOINT=your_database_endpoint
+DATABASE_USER=your_database_user
+DATABASE_PASSWORD=your_database_password
+DATABASE_PORT=your_database_port
+DATABASE_NAME=your_database_name
+CLOUD_FOLDER_ID=your_cloud_folder_id
+CLOUD_SERVICE_ACCOUNT=your_cloud_service_account`
+
+Ensure each parameter is assigned an appropriate value according to your setup. The TOOL_VERSION variable specifies the version of the tool, while the DATABASE_* variables configure the connection to the database, including the endpoint, username, password, port, and database name. Additionally, the CLOUD_FOLDER_ID variable identifies the folder ID of the cloud storage service utilized by the tool.
+
+Lastly, for the CLOUD_SERVICE_ACCOUNT variable, you need to provide the service account credentials or token for authentication with the cloud service. This value may vary depending on the cloud provider and authentication method used.
+
+Refer to your cloud service documentation for instructions on obtaining the service account credentials and ensure the .env file is correctly populated before running the tool.
+
+Please replace "your_database_endpoint", "your_database_user", "your_database_password", "your_database_port", "your_database_name", "your_cloud_folder_id", and "your_cloud_service_account" with the actual values for your setup.
+
 ## Examples
 
 The tool provides the ability to assess an entire CKAN instance or a single dataset. Follow the instructions provided within the tool for specific usage.
